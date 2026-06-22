@@ -1,16 +1,373 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#00e5ff">
 <title>大橙助手</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#080b12}
-iframe{position:fixed;top:0;left:0;width:100%;height:100%;border:none}
+:root {
+  --cyan: #00e5ff; --cyan-dim: #00b8d4; --blue: #448aff; --purple: #7c4dff;
+  --bg: #080b12; --surface: #0d1119; --surface2: #111827;
+  --border: rgba(0,229,255,.12); --text: #c8d6e5; --text-dim: #5a6a7e;
+  --glow: 0 0 20px rgba(0,229,255,.15), 0 0 60px rgba(0,229,255,.05);
+}
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display:flex; flex-direction:column; overflow-x:hidden;
+  -webkit-font-smoothing: antialiased;
+}
+#nnCanvas { position:fixed; inset:0; z-index:0; opacity:.6; }
+
+/* Header */
+.header {
+  display:flex; align-items:center; gap:12px; padding:14px 24px;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  z-index:1; position:relative;
+}
+.header h1 { font-size:20px; font-weight:700; letter-spacing:2px; }
+.header h1 span { color:var(--cyan); }
+
+/* Main */
+.main {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  padding:30px 20px; z-index:1; position:relative;
+}
+.card {
+  width:100%; max-width:600px; background:var(--surface);
+  border:1px solid var(--border); border-radius:20px; overflow:hidden;
+  box-shadow:var(--glow); transition:all .4s;
+}
+.card.has-player { max-width:960px; }
+
+/* Input */
+.input-section { padding:24px; }
+.input-row { display:flex; gap:12px; }
+.url-input {
+  flex:1; height:52px; padding:0 20px; background:var(--surface2);
+  border:1px solid rgba(255,255,255,.08); border-radius:14px;
+  color:#fff; font-size:15px; font-family:inherit;
+  outline:none; transition:border-color .3s;
+}
+.url-input:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,229,255,.08); }
+.url-input::placeholder { color:var(--text-dim); }
+.paste-btn {
+  width:52px; height:52px; border:1px solid rgba(255,255,255,.08);
+  background:var(--surface2); border-radius:14px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .25s; flex-shrink:0;
+}
+.paste-btn:hover { border-color:var(--cyan); background:rgba(0,229,255,.08); }
+.paste-btn svg { width:18px; height:18px; fill:var(--text-dim); }
+.paste-btn:hover svg { fill:var(--cyan); }
+
+/* Play Button */
+.btn-play {
+  display:block; width:72px; height:72px; margin:24px auto 0;
+  border-radius:50%; border:2px solid var(--cyan);
+  background:rgba(0,229,255,.1); cursor:pointer;
+  transition:all .3s; position:relative;
+  box-shadow:0 0 30px rgba(0,229,255,.2);
+}
+.btn-play:hover {
+  background:rgba(0,229,255,.2); box-shadow:0 0 50px rgba(0,229,255,.4);
+  transform:scale(1.05);
+}
+.btn-play:active { transform:scale(.95); }
+.btn-play .play-icon { width:28px; height:28px; fill:var(--cyan); margin-left:4px; }
+.btn-play .btn-spinner {
+  width:28px; height:28px; border:2px solid rgba(255,255,255,.2);
+  border-top-color:var(--cyan); border-radius:50%;
+  animation:spin .6s linear infinite; position:absolute; top:50%; left:50%;
+  margin:-14px 0 0 -14px;
+}
+.btn-play:disabled { opacity:.6; cursor:wait; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Player Area */
+.player-area {
+  display:none; width:100%; position:relative;
+  background:#000; border-top:1px solid var(--border);
+}
+.player-area.active { display:block; }
+.player-area video {
+  width:100%; display:block; max-height:70vh; background:#000;
+}
+.player-area iframe {
+  width:100%; height:540px; border:none; background:#000;
+}
+
+/* Player Controls */
+.player-controls {
+  display:flex; align-items:center; gap:12px; padding:10px 20px;
+  background:var(--surface2); border-top:1px solid var(--border);
+  flex-wrap:wrap;
+}
+.player-controls .url-text {
+  flex:1; min-width:0; font-size:11px; color:var(--text-dim);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.btn-back {
+  padding:6px 16px; border:1px solid var(--border);
+  background:transparent; color:var(--text); border-radius:8px;
+  font-size:12px; cursor:pointer; font-family:inherit;
+  transition:all .25s;
+}
+.btn-back:hover { background:rgba(255,255,255,.06); border-color:var(--cyan); }
+
+/* Quick Links */
+.quick-links {
+  display:flex; flex-wrap:wrap; justify-content:center; gap:12px;
+  padding:20px; z-index:1; position:relative;
+}
+.quick-link-btn {
+  padding:10px 22px; border:1px solid rgba(0,229,255,.2);
+  background:rgba(0,229,255,.05); color:var(--cyan);
+  border-radius:12px; font-size:13px; cursor:pointer;
+  transition:all .25s; font-family:inherit;
+  backdrop-filter:blur(4px);
+}
+.quick-link-btn:hover {
+  background:rgba(0,229,255,.15); border-color:var(--cyan);
+  box-shadow:0 0 20px rgba(0,229,255,.2); color:#fff;
+  transform:translateY(-1px);
+}
+
+/* Footer */
+.footer {
+  padding:12px; text-align:center; font-size:10px; letter-spacing:.8px;
+  color:var(--text-dim); z-index:1; position:relative;
+  border-top:1px solid rgba(255,255,255,.02);
+}
+
+/* Toast */
+.toast {
+  position:fixed; top:80px; left:50%; transform:translateX(-50%);
+  padding:10px 24px; border-radius:12px; font-size:12px; z-index:200;
+  pointer-events:none; opacity:0; transition:opacity .3s;
+  background:var(--surface); border:1px solid var(--border);
+  backdrop-filter:blur(8px);
+}
+.toast.show { opacity:1; }
+.toast.error { border-color:rgba(255,82,82,.4); color:#ff5252; }
+.toast.success { border-color:rgba(0,229,255,.4); color:var(--cyan); }
+
+/* Responsive */
+@media (max-width:600px) {
+  .input-section { padding:16px; }
+  .btn-play { width:64px; height:64px; }
+  .header { padding:10px 16px; }
+  .header h1 { font-size:17px; }
+  .url-input { height:48px; font-size:16px; }
+  .player-area iframe { height:280px; }
+  .player-area video { max-height:300px; }
+}
 </style>
 </head>
 <body>
-<iframe src="https://606fa213.r10.vip.cpolar.cn" allow="camera;microphone;fullscreen"></iframe>
+<canvas id="nnCanvas"></canvas>
+
+<div class="header">
+  <h1>大橙<span>助手</span></h1>
+</div>
+
+<div class="main">
+  <div class="card" id="mainCard">
+    <div class="input-section">
+      <div class="input-row">
+        <input type="text" class="url-input" id="urlInput"
+               placeholder="粘贴视频链接，点击播放按钮解析"
+               autocomplete="off" autofocus>
+        <button class="paste-btn" onclick="pasteUrl()" title="粘贴">
+          <svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1S9.6 1.84 9.18 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 16H5V5h2v2h10V5h2v14z"/></svg>
+        </button>
+      </div>
+    </div>
+    <button class="btn-play" id="parseBtn" onclick="doParse()">
+      <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+
+    <!-- Player -->
+    <div class="player-area" id="playerArea">
+      <video id="videoEl" controls crossorigin="anonymous" playsinline style="display:none;"></video>
+      <iframe id="iframeEl" style="display:none;" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+      <div class="player-controls">
+        <button class="btn-back" onclick="closePlayer()">← 返回</button>
+        <span class="url-text" id="currentUrl"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="quick-links">
+  <button class="quick-link-btn" onclick="window.open('https://v.qq.com','_blank')">腾讯视频</button>
+  <button class="quick-link-btn" onclick="window.open('https://www.iqiyi.com','_blank')">爱奇艺</button>
+  <button class="quick-link-btn" onclick="window.open('https://www.youku.com','_blank')">优酷</button>
+  <button class="quick-link-btn" onclick="window.open('https://www.mgtv.com','_blank')">芒果TV</button>
+</div>
+
+<div class="footer">仅供学习交流 · 严禁商业用途</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ==== 配置：部署后改为你的 Worker 地址 ====
+const WORKER_URL = 'https://dc-worker.yanzicheng888.workers.dev';
+// ====================================
+
+const $ = id => document.getElementById(id);
+let hls = null;
+
+// ==== 解析 ====
+async function doParse() {
+  const url = $('urlInput').value.trim();
+  if (!url) { toast('请输入视频链接', 'error'); return; }
+
+  const btn = $('parseBtn');
+  const icon = btn.querySelector('.play-icon');
+  btn.disabled = true;
+  icon.style.display = 'none';
+  btn.insertAdjacentHTML('beforeend', '<div class="btn-spinner"></div>');
+  toast('解析中...');
+
+  try {
+    const resp = await fetch(WORKER_URL + '/?url=' + encodeURIComponent(url));
+    const data = await resp.json();
+
+    btn.disabled = false;
+    const sp = btn.querySelector('.btn-spinner');
+    if (sp) sp.remove();
+    icon.style.display = '';
+
+    if (!data.ok) {
+      toast(data.error || '解析失败', 'error');
+      return;
+    }
+
+    $('currentUrl').textContent = url.length > 60 ? url.slice(0,60)+'...' : url;
+    $('mainCard').classList.add('has-player');
+    $('playerArea').classList.add('active');
+
+    if (data.type === 'm3u8') {
+      // hls.js 直接播放
+      playM3u8(data.url, url);
+      toast('解析成功 — hls.js 直连播放', 'success');
+    } else {
+      // iframe 降级
+      $('videoEl').style.display = 'none';
+      if (hls) { hls.destroy(); hls = null; }
+      $('iframeEl').style.display = 'block';
+      $('iframeEl').src = data.url;
+      toast('已加载播放器页面', 'success');
+    }
+  } catch (e) {
+    btn.disabled = false;
+    const sp = btn.querySelector('.btn-spinner');
+    if (sp) sp.remove();
+    icon.style.display = '';
+    toast('网络错误: ' + e.message, 'error');
+  }
+}
+
+function playM3u8(m3u8Url, sourceUrl) {
+  $('iframeEl').style.display = 'none';
+  $('videoEl').style.display = 'block';
+
+  const video = $('videoEl');
+  if (Hls.isSupported()) {
+    if (hls) hls.destroy();
+    hls = new Hls({
+      xhrSetup: function(xhr) {
+        xhr.setRequestHeader('Referer', new URL(sourceUrl).origin);
+      }
+    });
+    hls.loadSource(m3u8Url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+      video.play().catch(() => {});
+    });
+    hls.on(Hls.Events.ERROR, function(evt, data) {
+      if (data.fatal) {
+        console.error('HLS fatal:', data.type, data.details);
+        toast('播放失败: ' + data.details, 'error');
+      }
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = m3u8Url;
+    video.addEventListener('loadedmetadata', () => video.play().catch(()=>{}));
+  } else {
+    toast('浏览器不支持 HLS 播放', 'error');
+  }
+}
+
+function closePlayer() {
+  if (hls) { hls.destroy(); hls = null; }
+  $('videoEl').pause();
+  $('videoEl').style.display = 'none';
+  $('iframeEl').style.display = 'none';
+  $('iframeEl').src = '';
+  $('playerArea').classList.remove('active');
+  $('mainCard').classList.remove('has-player');
+  $('currentUrl').textContent = '';
+}
+
+// ==== 回车触发 ====
+$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') doParse(); });
+
+// ==== 粘贴 ====
+async function pasteUrl() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) { $('urlInput').value = text; toast('已粘贴', 'success'); }
+  } catch { toast('粘贴失败，手动 Ctrl+V', 'error'); }
+}
+
+// ==== Toast ====
+function toast(msg, type) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type||'') + ' show';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+
+<script>
+// ==== 神经网络动画 ====
+(() => {
+  const c = document.getElementById('nnCanvas');
+  const ctx = c.getContext('2d');
+  let w, h, nodes = [], t = 0;
+  function resize() { w = c.width = window.innerWidth; h = c.height = window.innerHeight; }
+  resize(); window.addEventListener('resize', resize);
+  const N = 60;
+  for (let i=0;i<N;i++) nodes.push({
+    x:Math.random()*w,y:Math.random()*h,
+    vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*1.5+.8
+  });
+  function draw() {
+    t+=.008; ctx.clearRect(0,0,w,h);
+    nodes.forEach(n=>{
+      n.x+=n.vx+Math.sin(t+n.y*.01)*.15; n.y+=n.vy+Math.cos(t+n.x*.01)*.15;
+      if(n.x<0)n.x=w; if(n.x>w)n.x=0; if(n.y<0)n.y=h; if(n.y>h)n.y=0;
+    });
+    const maxDist=160;
+    nodes.forEach((a,i)=>{nodes.slice(i+1).forEach(b=>{
+      const dx=a.x-b.x,dy=a.y-b.y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<maxDist){ctx.strokeStyle=`rgba(0,229,255,${(1-d/maxDist)*.15})`;ctx.lineWidth=.5;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+    })});
+    nodes.forEach(n=>{
+      const pulse=1+Math.sin(t*3+n.x)*.3;
+      ctx.beginPath();ctx.arc(n.x,n.y,n.r*pulse,0,Math.PI*2);ctx.fillStyle='rgba(0,229,255,.5)';ctx.fill();
+      ctx.beginPath();ctx.arc(n.x,n.y,n.r*pulse*2.5,0,Math.PI*2);ctx.fillStyle='rgba(0,229,255,.08)';ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
 </body>
 </html>
