@@ -175,7 +175,10 @@ async function doParseWithUrl(url) {
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
   $('playerInfo').textContent = '正在解析...';
   try {
-    const resp = await fetch(WORKER_URL + '/?url=' + encodeURIComponent(url));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const resp = await fetch(WORKER_URL + '/?url=' + encodeURIComponent(url), { signal: controller.signal });
+    clearTimeout(timeoutId);
     const data = await resp.json();
     if (!data.ok) { throw new Error(data.error || '解析失败'); }
     $('playerInfo').textContent = data.type === 'm3u8' ? '直连播放' : '页面播放';
@@ -185,7 +188,9 @@ async function doParseWithUrl(url) {
       toast('解析成功 · 直连播放', 'success');
     } else {
       video.style.display = 'none'; iframe.style.display = 'block'; iframe.src = data.url;
-      iframe.onload = () => $('loadingOverlay').classList.add('hidden');
+      let iframeLoaded = false;
+      iframe.onload = () => { iframeLoaded = true; $('loadingOverlay').classList.add('hidden'); };
+      setTimeout(() => { if (!iframeLoaded) $('loadingOverlay').classList.add('hidden'); }, 15000);
       toast('已加载播放页面', 'info');
     }
   } catch (e) {
